@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ "$EUID" -ne 0 ]; then
+  echo "Por favor, ejecuta este script como root (sudo)."
+  exit
+fi
+
 # Definir la ruta de las librerías
 LIB_DIR="./libs"
 
