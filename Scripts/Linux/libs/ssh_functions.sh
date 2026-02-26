@@ -23,4 +23,4 @@ function configurar_ssh_linux() {
     else
         echo "Error: SSH no se inició correctamente."
     fi
-}x
+}

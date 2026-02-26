@@ -21,14 +21,23 @@ fi
 
 # MENÚ PRINCIPAL
 echo "Seleccione una opción:"
-echo "1. Configurar Acceso Remoto (SSH)"
+echo "1. Instalar y Configurar DHCP"
 echo "2. Instalar y Configurar DNS"
-echo "3. Instalar y Configurar DHCP"
+echo "3. Configurar SSH"
 read -p "Opción: " opcion
 
 case $opcion in
-    1) configurar_ssh_linux ;;  # Llamada a función importada
-    2) instalar_configurar_dns ;;
-    3) instalar_configurar_dhcp ;;
+    1)
+        instalar_dhcp            # Función de libs/dhcp_functions.sh
+        configurar_dhcp_interactivo
+        monitorear_dhcp
+        ;;
+    2)
+        validar_ip_estatica
+        instalar_dns
+        configurar_zona_dns
+        validar_dns
+        ;;
+    3) configurar_ssh_linux;;
     *) echo "Opción no válida" ;;
 esac
