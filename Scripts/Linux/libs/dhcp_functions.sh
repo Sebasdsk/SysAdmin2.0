@@ -4,6 +4,34 @@
 # FUNCIONES DHCP (ISC-DHCP-SERVER)
 # ==========================================
 
+function Menu_DHCP(){
+while true; do    
+    echo "Bienvenido al DHCP" 
+    echo "Seleccione una opcion"
+    echo "1. Instalar y Configurar DHCP"
+    echo "2. Monitorear el DHCP"
+    echo "3. Salir"
+    read -p "Opcion: " opcion
+    case $opcion in
+        1)
+            instalar_dhcp
+            configurar_dhcp_interactivo
+            ;;
+        2)
+            monitorear_dhcp
+            ;;
+        3) 
+            return 0
+            ;;
+        *) 
+            echo "opcion no valida"
+            ;;
+
+    esac
+done
+}
+
+
 # 1. INSTALACIÓN IDEMPOTENTE
 function instalar_dhcp() {
     echo "--- Verificando servicio DHCP ---"
@@ -53,13 +81,18 @@ subnet $net_ip netmask $net_mask {
 }
 EOF
 
-    # Definir interfaz (asume la primera interfaz activa, ajustar si es necesario)
-    INTERFAZ=$(ip -o -4 route show to default | awk '{print $5}' | head -n1)
-    # Si no hay default route, busca la primera no-loopback
-    if [ -z "$INTERFAZ" ]; then
-        INTERFAZ=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | head -n1)
+
+    PREF_INTERFAZ="enp0s8"
+    if ip link show "$PREF_INTERFAZ" >/dev/null 2>&1; then
+        INTERFAZ="$PREF_INTERFAZ"
+    else
+        # Si no existe, usar la lógica anterior (ruta por defecto o primera no-loopback)
+        INTERFAZ=$(ip -o -4 route show to default | awk '{print $5}' | head -n1)
+        if [ -z "$INTERFAZ" ]; then
+            INTERFAZ=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | head -n1)
+        fi
     fi
-    
+
     sed -i "s/INTERFACESv4=.*/INTERFACESv4=\"$INTERFAZ\"/" /etc/default/isc-dhcp-server
 
     # Validar sintaxis antes de reiniciar
