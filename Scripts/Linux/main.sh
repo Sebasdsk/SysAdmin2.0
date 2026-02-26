@@ -38,10 +38,7 @@ while true; do
             Menu_DHCP
             ;;
         2)
-            validar_ip_estatica
-            instalar_dns
-            configurar_zona_dns
-            validar_dns
+            Menu_DNS
             ;;
         3) 
             configurar_ssh_linux;;

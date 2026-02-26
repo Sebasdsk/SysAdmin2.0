@@ -4,27 +4,69 @@
 # FUNCIONES DNS (BIND9) - reprobados.com
 # ==========================================
 
+function Menu_DNS(){
+    while true; do    
+        echo "======================================"
+        echo "          MENÚ DNS (BIND9)            "
+        echo "======================================"
+        echo "1. Validar IP e Instalar DNS"
+        echo "2. Configurar Zona (reprobados.com)"
+        echo "3. Validar y Monitorear DNS"
+        echo "4. Regresar al menú principal"
+        read -p "Opción: " opcion
+        
+        case $opcion in
+            1)
+                validar_ip_estatica
+                instalar_dns
+                ;;
+            2)
+                configurar_zona_dns
+                ;;
+            3) 
+                validar_dns
+                ;;
+            4) 
+                return 0 # Regresa al main.sh
+                ;;
+            *) 
+                echo "Opción no válida"
+                ;;
+        esac
+    done
+}
+
+# (Mantén el resto de tus funciones aquí abajo sin cambios: validar_ip_estatica, instalar_dns, etc.)
+
 # 1. VALIDACIÓN PREVIA DE RED (IP FIJA)
 function validar_ip_estatica() {
     echo "--- Verificando configuración de red ---"
-    # Detectar IP actual
-    CURRENT_IP=$(hostname -I | awk '{print $1}')
     
-    echo "IP actual detectada: $CURRENT_IP"
+    # Identificar interfaz dura
+    IFACE="enp0s8"
+    
+    # Detectar IP actual ESPECÍFICAMENTE de la interfaz interna (enp0s8)
+    CURRENT_IP=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+    
+    if [ -z "$CURRENT_IP" ]; then
+        echo "La interfaz $IFACE no tiene IP actualmente."
+    else
+        echo "IP actual detectada en $IFACE: $CURRENT_IP"
+    fi
+    
     read -p "¿Es esta una IP estática correcta para el servidor DNS? (s/n): " confirm
     
     if [[ "$confirm" != "s" ]]; then
         echo "Configurando IP Estática..."
         read -p "Ingrese IP Estática deseada (ej. 192.168.100.10): " static_ip
         read -p "Mascara (ej. 24): " mask
+        # En una red interna pura, el gateway no suele ser estrictamente necesario para el server, 
+        # pero si la rúbrica lo pide, lo dejamos.
         read -p "Gateway (ej. 192.168.100.1): " gateway
         read -p "DNS (ej. 8.8.8.8): " dns
         
-        # Identificar interfaz
-        IFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | head -n1)
-        
-        # Generar configuración Netplan (Compatible con Ubuntu 20.04/22.04)
-        cat > /etc/netplan/01-netcfg.yaml <<EOF
+        # CORRECCIÓN CLAVE: Usar un archivo 02-... para NO borrar el 01 (el del puente)
+        cat > /etc/netplan/02-red-interna.yaml <<EOF
 network:
   version: 2
   renderer: networkd
@@ -39,9 +81,9 @@ network:
       nameservers:
         addresses: [$dns]
 EOF
-        echo "Aplicando cambios de red... (Si cambia la IP, la conexión SSH podría caerse)"
+        echo "Aplicando cambios de red..."
         netplan apply
-        echo "Red configurada. Nueva IP: $static_ip"
+        echo "Red interna configurada. Nueva IP: $static_ip"
     else
         echo "IP confirmada. Procediendo..."
     fi
@@ -59,12 +101,20 @@ function instalar_dns() {
     fi
 }
 
+
 # 3. CONFIGURACIÓN DE ZONA (reprobados.com)
 function configurar_zona_dns() {
     echo "--- Configurando Zona 'reprobados.com' ---"
     
     read -p "Ingrese la IP del CLIENTE (para www.reprobados.com): " cliente_ip
-    SERVER_IP=$(hostname -I | awk '{print $1}')
+    
+    # CORRECCIÓN CLAVE: Obtener la IP estrictamente de enp0s8
+    SERVER_IP=$(ip -4 addr show "enp0s8" | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+
+    if [ -z "$SERVER_IP" ]; then
+         echo "Error: No se detectó IP en enp0s8. Por favor revisa la configuración de red."
+         return 1
+    fi
 
     # Configurar named.conf.local
     if ! grep -q "reprobados.com" /etc/bind/named.conf.local; then
@@ -79,7 +129,6 @@ EOF
     fi
 
     # Crear archivo de zona
-    # Serial usa fecha + contador: YYYYMMDD01
     SERIAL=$(date +%Y%m%d01)
     
     cat > /var/cache/bind/db.reprobados.com <<EOF
