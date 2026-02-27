@@ -5,9 +5,7 @@
 function Show-DnsMenu {
     while ($true) {
         Clear-Host
-        Write-Host "======================================" -ForegroundColor Magenta
-        Write-Host "          MENÚ DNS (WINDOWS)          " -ForegroundColor Magenta
-        Write-Host "======================================" -ForegroundColor Magenta
+        Write-Host "          MENÚ DNS          "
         Write-Host "1. Validar IP Estática (Red Interna)"
         Write-Host "2. Instalar Rol DNS"
         Write-Host "3. Configurar Zona (reprobados.com)"
@@ -22,18 +20,18 @@ function Show-DnsMenu {
             '3' { Configure-DnsZone; Pause }
             '4' { Validate-Dns; Pause }
             '5' { return }
-            Default { Write-Host "Opción no válida." }
+            Default { Write-Host "Opcion no valida." }
         }
     }
 }
 
 function Set-StaticIpInternal {
-    Write-Host "--- Configuración de Red Interna ---"
+    Write-Host "--- Configuracion de Red Interna ---"
     $nic = Get-InternalInterface
     
     if (-not $nic) { return }
 
-    Write-Host "Interfaz interna detectada: $($nic.Name)" -ForegroundColor Green
+    Write-Host "Interfaz interna detectada: $($nic.Name)"
     
     $ipInfo = Get-NetIPAddress -InterfaceAlias $nic.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue
     if ($ipInfo) {
@@ -42,7 +40,7 @@ function Set-StaticIpInternal {
         Write-Host "La interfaz no tiene IP asignada actualmente."
     }
 
-    $resp = Read-Host "¿Deseas configurar una nueva IP Estática en esta interfaz? (s/n)"
+    $resp = Read-Host "¿Deseas configurar una nueva IP Estatica en esta interfaz? (s/n)"
     if ($resp -eq 's') {
         $ip = Read-Host "Ingrese IP (Ej. 192.168.100.10)"
         $prefix = Read-Host "Prefijo de red (Ej. 24 para 255.255.255.0)"
@@ -52,9 +50,9 @@ function Set-StaticIpInternal {
             Remove-NetIPAddress -InterfaceAlias $nic.Name -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
             # Asignar nueva
             New-NetIPAddress -InterfaceAlias $nic.Name -IPAddress $ip -PrefixLength $prefix -ErrorAction Stop | Out-Null
-            Write-Host "IP configurada correctamente." -ForegroundColor Green
+            Write-Host "IP configurada correctamente."
         } Catch {
-            Write-Host "Error al configurar la IP: $_" -ForegroundColor Red
+            Write-Host "Error al configurar la IP: $_"
         }
     }
 }
@@ -62,10 +60,10 @@ function Set-StaticIpInternal {
 function Install-DnsRole {
     $dns = Get-WindowsFeature -Name DNS
     if ($dns.Installed) {
-        Write-Host "El rol DNS ya está instalado." -ForegroundColor Green
+        Write-Host "El rol DNS ya esta instalado."
     } else {
         Install-WindowsFeature -Name DNS -IncludeManagementTools
-        Write-Host "DNS Instalado." -ForegroundColor Green
+        Write-Host "DNS Instalado."
     }
 }
 
@@ -75,7 +73,7 @@ function Configure-DnsZone {
 
     if (-not (Get-DnsServerZone | Where-Object Name -eq $ZoneName)) {
         Add-DnsServerPrimaryZone -Name $ZoneName -ZoneFile "$ZoneName.dns"
-        Write-Host "Zona $ZoneName creada." -ForegroundColor Green
+        Write-Host "Zona $ZoneName creada."
     } else {
         Write-Host "La zona ya existe."
     }
@@ -83,9 +81,9 @@ function Configure-DnsZone {
     Try {
         Remove-DnsServerResourceRecord -ZoneName $ZoneName -Name "www" -RRType "A" -Force -ErrorAction SilentlyContinue
         Add-DnsServerResourceRecordA -ZoneName $ZoneName -Name "www" -IPv4Address $ClientIP
-        Write-Host "Registro A (www) apuntando a $ClientIP creado exitosamente." -ForegroundColor Green
+        Write-Host "Registro A (www) apuntando a $ClientIP creado exitosamente."
     } Catch {
-        Write-Host "Error configurando registro: $_" -ForegroundColor Red
+        Write-Host "Error configurando registro: $_"
     }
 }
 

@@ -1,7 +1,7 @@
 
 function Get-InternalInterface {
     # Busca la interfaz que NO tiene un Default Gateway configurado (suele ser la Red Interna en VMs)
-    # y que esté conectada (Up)
+    # y que este conectada (Up)
     $InternalNIC = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | ForEach-Object {
         $ipInfo = Get-NetIPConfiguration -InterfaceAlias $_.Name
         if (-not $ipInfo.IPv4DefaultGateway) {
@@ -12,7 +12,7 @@ function Get-InternalInterface {
     if ($InternalNIC) {
         return $InternalNIC
     } else {
-        Write-Warning "No se pudo detectar automáticamente la red interna."
+        Write-Warning "No se pudo detectar automaticamente la red interna."
         Get-NetAdapter | Select-Object Name, InterfaceDescription, Status | Format-Table
         $nicName = Read-Host "Por favor, escribe el Nombre (Name) de la interfaz interna"
         return Get-NetAdapter -Name $nicName -ErrorAction SilentlyContinue
