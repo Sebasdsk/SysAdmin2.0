@@ -22,19 +22,21 @@ if (Test-Path $LibsPath) {
 # 3. MENÚ PRINCIPAL
 while ($true) {
     Clear-Host
-    Write-Host "  MENU PRINCIPAL   "      
-    Write-Host "1. DHCP"
-    Write-Host "2. DNS"
-    Write-Host "3. SSH"
-    Write-Host "4. Salir"
+    Write-Host "  MENU PRINCIPAL   "
+    Write-Host "1. Configurar La IP estatica de la red interna"      
+    Write-Host "2. DHCP"
+    Write-Host "3. DNS"
+    Write-Host "4. SSH"
+    Write-Host "5. Salir"
     
     $opcion = Read-Host "Seleccione una opcion"
 
     switch ($opcion) {
-        '1' { Show-DhcpMenu }
-        '2' { Show-DnsMenu }
-        '3' { Show-SshMenu }
-        '4' { 
+        '1' { Set-StaticIpInternal}
+        '2' { Show-DhcpMenu }
+        '3' { Show-DnsMenu }
+        '4' { Show-SshMenu }
+        '5' { 
             Write-Host "Saliendo del sistema..." 
             Exit 
         }

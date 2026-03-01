@@ -23,3 +23,36 @@ function Test-IPv4Format ($IP) {
     $Regex = "^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
     return $IP -match $Regex
 }
+
+
+function Set-StaticIpInternal {
+    Write-Host "--- Configuracion de Red Interna ---"
+    $nic = Get-InternalInterface
+    
+    if (-not $nic) { return }
+
+    Write-Host "Interfaz interna detectada: $($nic.Name)"
+    
+    $ipInfo = Get-NetIPAddress -InterfaceAlias $nic.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue
+    if ($ipInfo) {
+        Write-Host "IP Actual en $($nic.Name): $($ipInfo.IPAddress)"
+    } else {
+        Write-Host "La interfaz no tiene IP asignada actualmente."
+    }
+
+    $resp = Read-Host "¿Deseas configurar una nueva IP Estatica en esta interfaz? (s/n)"
+    if ($resp -eq 's') {
+        $ip = Read-Host "Ingrese IP (Ej. 192.168.100.10)"
+        $prefix = Read-Host "Prefijo de red (Ej. 24 para 255.255.255.0)"
+        
+        Try {
+            # Limpiar IP vieja si existe
+            Remove-NetIPAddress -InterfaceAlias $nic.Name -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
+            # Asignar nueva
+            New-NetIPAddress -InterfaceAlias $nic.Name -IPAddress $ip -PrefixLength $prefix -ErrorAction Stop | Out-Null
+            Write-Host "IP configurada correctamente."
+        } Catch {
+            Write-Host "Error al configurar la IP: $_"
+        }
+    }
+}

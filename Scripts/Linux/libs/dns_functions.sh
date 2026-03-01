@@ -6,9 +6,7 @@
 
 function Menu_DNS(){
     while true; do    
-        echo "======================================"
         echo "          MENÚ DNS (BIND9)            "
-        echo "======================================"
         echo "1. Validar IP e Instalar DNS"
         echo "2. Configurar Zona (reprobados.com)"
         echo "3. Validar y Monitorear DNS"

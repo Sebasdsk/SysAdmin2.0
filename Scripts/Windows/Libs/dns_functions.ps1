@@ -6,56 +6,23 @@ function Show-DnsMenu {
     while ($true) {
         Clear-Host
         Write-Host "          MENÚ DNS          "
-        Write-Host "1. Validar IP Estática (Red Interna)"
-        Write-Host "2. Instalar Rol DNS"
-        Write-Host "3. Configurar Zona (reprobados.com)"
-        Write-Host "4. Validar DNS"
-        Write-Host "5. Regresar al menú principal"
+        Write-Host "1. Instalar Rol DNS"
+        Write-Host "2. Configurar Zona (reprobados.com)"
+        Write-Host "3. Validar DNS"
+        Write-Host "4. Regresar al menú principal"
         
         $opcion = Read-Host "Opción"
 
         switch ($opcion) {
-            '1' { Set-StaticIpInternal; Pause }
-            '2' { Install-DnsRole; Pause }
-            '3' { Configure-DnsZone; Pause }
-            '4' { Validate-Dns; Pause }
-            '5' { return }
+            '1' { Install-DnsRole; Pause }
+            '2' { Configure-DnsZone; Pause }
+            '3' { Validate-Dns; Pause }
+            '4' { return }
             Default { Write-Host "Opcion no valida." }
         }
     }
 }
 
-function Set-StaticIpInternal {
-    Write-Host "--- Configuracion de Red Interna ---"
-    $nic = Get-InternalInterface
-    
-    if (-not $nic) { return }
-
-    Write-Host "Interfaz interna detectada: $($nic.Name)"
-    
-    $ipInfo = Get-NetIPAddress -InterfaceAlias $nic.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue
-    if ($ipInfo) {
-        Write-Host "IP Actual en $($nic.Name): $($ipInfo.IPAddress)"
-    } else {
-        Write-Host "La interfaz no tiene IP asignada actualmente."
-    }
-
-    $resp = Read-Host "¿Deseas configurar una nueva IP Estatica en esta interfaz? (s/n)"
-    if ($resp -eq 's') {
-        $ip = Read-Host "Ingrese IP (Ej. 192.168.100.10)"
-        $prefix = Read-Host "Prefijo de red (Ej. 24 para 255.255.255.0)"
-        
-        Try {
-            # Limpiar IP vieja si existe
-            Remove-NetIPAddress -InterfaceAlias $nic.Name -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
-            # Asignar nueva
-            New-NetIPAddress -InterfaceAlias $nic.Name -IPAddress $ip -PrefixLength $prefix -ErrorAction Stop | Out-Null
-            Write-Host "IP configurada correctamente."
-        } Catch {
-            Write-Host "Error al configurar la IP: $_"
-        }
-    }
-}
 
 function Install-DnsRole {
     $dns = Get-WindowsFeature -Name DNS
