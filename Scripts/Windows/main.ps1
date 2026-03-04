@@ -27,7 +27,8 @@ while ($true) {
     Write-Host "2. DHCP"
     Write-Host "3. DNS"
     Write-Host "4. SSH"
-    Write-Host "5. Salir"
+    Write-Host "5. FTP"
+    Write-Host "6. Salir"
     
     $opcion = Read-Host "Seleccione una opcion"
 
@@ -36,7 +37,8 @@ while ($true) {
         '2' { Show-DhcpMenu }
         '3' { Show-DnsMenu }
         '4' { Show-SshMenu }
-        '5' { 
+        '5' { Show-FtpMenu }
+        '6' { 
             Write-Host "Saliendo del sistema..." 
             Exit 
         }
