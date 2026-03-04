@@ -1,6 +1,4 @@
-# ==========================================
-# FUNCIONES DHCP (WINDOWS SERVER)
-# ==========================================
+
 
 function Show-DhcpMenu {
     while ($true) {

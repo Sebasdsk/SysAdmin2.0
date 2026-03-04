@@ -27,23 +27,33 @@ fi
 # MENÚ PRINCIPAL
 while true; do 
     echo "Seleccione una opción:"
-    echo "1. Instalar y Configurar DHCP"
-    echo "2. Instalar y Configurar DNS"
-    echo "3. Configurar SSH"
-    echo "4. Salir"
+    echo "1. Configurar Direccion IP estatica (Red Interna)"
+    echo "2. Instalar y Configurar DHCP"
+    echo "3. Instalar y Configurar DNS"
+    echo "4. Configurar SSH"
+    echo "5. Instalar y configurar FTP"
+    echo "6. Salir"
     read -p "Opción: " opcion
 
     case $opcion in
         1)
-            Menu_DHCP
+            validar_dns
             ;;
         2)
+            Menu_DHCP
+            ;;
+        3)
             Menu_DNS
             ;;
-        3) 
-            configurar_ssh_linux;;
         4) 
-            exit;;
+            configurar_ssh_linux
+            ;;
+        5)
+            Menu_FTP
+            ;;
+        6) 
+            exit
+            ;;
 
         *) echo "Opción no válida" ;;
     esac
