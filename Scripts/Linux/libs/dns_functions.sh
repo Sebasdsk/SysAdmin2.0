@@ -1,31 +1,30 @@
 #!/bin/bash
 
 # ==========================================
-# FUNCIONES DNS (BIND9) - reprobados.com
+# FUNCIONES DNS (BIND9) - ADAPTADO PRACTICA 3
 # ==========================================
 
 function Menu_DNS(){
     while true; do    
         echo "          MENÚ DNS (BIND9)            "
-        echo "1. Validar IP e Instalar DNS"
-        echo "2. Configurar Zona (reprobados.com)"
-        echo "3. Validar y Monitorear DNS"
+        echo "1. Validar e Instalar DNS"
+        echo "2. Configurar Nueva Zona (Dominio Personalizado)"
+        echo "3. Validar Configuración y Servicio"
         echo "4. Regresar al menú principal"
         read -p "Opción: " opcion
         
         case $opcion in
             1)
-                validar_ip_estatica
                 instalar_dns
                 ;;
             2)
-                configurar_zona_dns
+                configurar_zona_interactiva
                 ;;
             3) 
                 validar_dns
                 ;;
             4) 
-                return 0 # Regresa al main.sh
+                return 0 
                 ;;
             *) 
                 echo "Opción no válida"
@@ -34,13 +33,10 @@ function Menu_DNS(){
     done
 }
 
-
-
-
-
 # 1. INSTALACIÓN IDEMPOTENTE
 function instalar_dns() {
     echo "--- Verificando servicio BIND9 ---"
+    #
     if dpkg -s bind9 >/dev/null 2>&1; then
         echo "BIND9 ya está instalado."
     else
@@ -50,58 +46,92 @@ function instalar_dns() {
     fi
 }
 
-
-# 2. CONFIGURACIÓN DE ZONA (reprobados.com)
-function configurar_zona_dns() {
-    echo "--- Configurando Zona 'reprobados.com' ---"
+# 2. CONFIGURACIÓN DE ZONA (Lógica de Alberto adaptada)
+function configurar_zona_interactiva() {
+    echo "--- Configuración de Zonas DNS ---"
     
-    read -p "Ingrese la IP del CLIENTE (para www.reprobados.com): " cliente_ip
-    
-    # CORRECCIÓN CLAVE: Obtener la IP estrictamente de enp0s8
-    SERVER_IP=$(ip -4 addr show "enp0s8" | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+    # - Crear carpeta organizada para zonas
+    echo "Creando carpeta de zonas si no existe..."
+    mkdir -p /etc/bind/zones
+    chown bind:bind /etc/bind/zones
 
-    if [ -z "$SERVER_IP" ]; then
-         echo "Error: No se detectó IP en enp0s8. Por favor revisa la configuración de red."
-         return 1
-    fi
+    while true; do
+        echo "-----------------------------------"
+        # 1. Solicitar Dominio
+        while true; do
+            read -p "Introduzca el dominio (ej. miempresa.com): " dominio
+            if [[ -n "$dominio" ]]; then
+                break
+            fi
+            echo "El dominio no puede estar vacío."
+        done
 
-    # Configurar named.conf.local
-    if ! grep -q "reprobados.com" /etc/bind/named.conf.local; then
-        cat >> /etc/bind/named.conf.local <<EOF
+        # 2. Solicitar IP
+        # En la práctica de Alberto se pide la IP destino.
+        read -p "Introduzca la dirección IP del servidor (A record): " ip_destino
+        
+        # Validar formato de IP simple (regex básico)
+        if [[ ! $ip_destino =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+             echo "Formato de IP inválido. Usando IP local detectada."
+             ip_destino=$(hostname -I | awk '{print $1}')
+             echo "IP asignada: $ip_destino"
+        fi
 
-zone "reprobados.com" {
+        nombrearchzona="db.${dominio}"
+        ruta="/etc/bind/zones/${nombrearchzona}"
+
+        echo "Generando archivo de zona: $ruta"
+
+        # Generación del archivo de zona
+        cat > "${ruta}" << EOF
+\$TTL 86400
+@   IN  SOA ns1.${dominio}. admin.${dominio}. (
+        $(date +%Y%m%d)01 ; Serial
+        28800       ; Refresh
+        7200        ; Retry
+        864000      ; Expire
+        86400 )     ; Minimum TTL
+;
+    IN  NS  ns1.${dominio}.
+ns1 IN  A   ${ip_destino}
+@   IN  A   ${ip_destino}
+www IN  A   ${ip_destino}
+EOF
+
+        # Asignar permisos correctos
+        chown bind:bind "${ruta}"
+
+        # Configurar named.conf.local
+        ZoneConfig="/etc/bind/named.conf.local"
+
+        # Evitar duplicados
+        if ! grep -q "zone \"${dominio}\"" "$ZoneConfig"; then
+            cat >> "$ZoneConfig" <<EOF
+zone "${dominio}" {
     type master;
-    file "/var/cache/bind/db.reprobados.com";
+    file "${ruta}";
 };
 EOF
-        echo "Zona añadida a named.conf.local"
-    fi
+            echo "Zona añadida a la configuración local."
+        else
+            echo "La zona ya existía en named.conf.local. Se actualizó el archivo db."
+        fi
 
-    # Crear archivo de zona
-    SERIAL=$(date +%Y%m%d01)
-    
-    cat > /var/cache/bind/db.reprobados.com <<EOF
-;
-; BIND data file for reprobados.com
-;
-\$TTL    604800
-@       IN      SOA     ns1.reprobados.com. root.reprobados.com. (
-                              $SERIAL     ; Serial
-                         604800     ; Refresh
-                          86400     ; Retry
-                        2419200     ; Expire
-                         604800 )   ; Negative Cache TTL
-;
-@       IN      NS      ns1.reprobados.com.
-@       IN      A       $SERVER_IP
-ns1     IN      A       $SERVER_IP
-www     IN      A       $cliente_ip
-EOF
+        # Verificación rápida
+        named-checkconf
+        if [ $? -eq 0 ]; then
+            echo "Sintaxis válida. Reiniciando Bind9..."
+            systemctl restart bind9
+        else
+            echo "Error en la configuración generada."
+        fi
 
-    echo "Archivo de zona creado en /var/cache/bind/db.reprobados.com"
-    
-    # Reiniciar servicio
-    systemctl restart bind9
+        # Preguntar si quiere agregar otro dominio (Loop de Alberto)
+        read -p "¿Desea configurar otro dominio? (s/n): " respuesta
+        if [[ "$respuesta" != "s" && "$respuesta" != "S" ]]; then
+            break
+        fi
+    done
 }
 
 # 3. VALIDACIÓN
