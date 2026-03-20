@@ -1,184 +1,336 @@
 # ==========================================
-# FUNCIONES FTP (WINDOWS IIS)
+# FUNCIONES FTP (IIS) 
 # ==========================================
 
 function Show-FtpMenu {
-    while ($true) {
+    do {
         Clear-Host
-        Write-Host "          MENÚ FTP (IIS)         "
-        Write-Host "1. Instalar Rol FTP Server"
-        Write-Host "2. Configurar Sitio y Grupos"
-        Write-Host "3. Crear/Gestionar Usuarios"
-        Write-Host "4. Regresar al menú principal"
+        Write-Host "=================================="
+        Write-Host "     Administrador de FTP"
+        Write-Host "=================================="
+        Write-Host "1. Instalar y Configurar FTP Completo"
+        Write-Host "2. Crear grupos locales"
+        Write-Host "3. Crear usuario FTP"
+        Write-Host "4. Eliminar usuario FTP"
+        Write-Host "5. Configurar autenticación y permisos"
+        Write-Host "6. Reiniciar sitio FTP"
+        Write-Host "7. Regresar al menú principal"
+        Write-Host "=================================="
         
-        $opcion = Read-Host "Opción"
+        $opcion = Read-Host "Seleccione una opción"
 
         switch ($opcion) {
-            '1' { Install-FtpRole; Pause }
-            '2' { Configure-FtpSite; Pause }
-            '3' { Manage-FtpUsers; Pause }
-            '4' { return } 
-            Default { Write-Host "Opción no válida." }
-        }
-    }
-}
+            1 {
+                Write-Host "Iniciando instalación y configuración completa de FTP..." -ForegroundColor Cyan
 
-function Install-FtpRole {
-    Write-Host "--- Verificando Rol FTP ---"
-    $ftp = Get-WindowsFeature -Name Web-Ftp-Server
-    if ($ftp.Installed) {
-        Write-Host "El servicio FTP ya está instalado."
-    } else {
-        Write-Host "Instalando IIS y Servicio FTP..."
-        Install-WindowsFeature -Name Web-Ftp-Server -IncludeManagementTools
-        Install-WindowsFeature -Name Web-Ftp-Ext # Extensibilidad para autenticación custom si fuera necesario
-    }
-}
+                Instalar-Caracteristicas
+                Crear-Estructura-FTP
+                Crear-Sitio-FTP
+                Configurar-TLS
+                Configurar-UserIsolation
+                Configurar-Autenticacion-Permisos
 
-function Configure-FtpSite {
-    Import-Module WebAdministration
-    $FtpRoot = "C:\inetpub\ftproot"
-    $PhysicalRoot = "C:\FTP_DATA"
-
-    # 1. Crear Grupos Locales
-    foreach ($grp in @("reprobados", "recursadores")) {
-        if (-not (Get-LocalGroup -Name $grp -ErrorAction SilentlyContinue)) {
-            New-LocalGroup -Name $grp -Description "Grupo FTP $grp" | Out-Null
-            Write-Host "Grupo $grp creado."
-        }
-    }
-
-    # 2. Crear Estructura Física Real (Donde se guardan los datos)
-    New-Item -Path "$PhysicalRoot\General" -ItemType Directory -Force | Out-Null
-    New-Item -Path "$PhysicalRoot\Reprobados" -ItemType Directory -Force | Out-Null
-    New-Item -Path "$PhysicalRoot\Recursadores" -ItemType Directory -Force | Out-Null
-
-    # 3. Configurar Permisos NTFS en carpetas físicas
-    # General: Todos leen, Grupos escriben
-    $Acl = Get-Acl "$PhysicalRoot\General"
-    # Regla: Reprobados Modify
-    $Ar = New-Object System.Security.AccessControl.FileSystemAccessRule("reprobados", "Modify", "ContainerInherit,ObjectInherit", "None", "Allow")
-    $Acl.SetAccessRule($Ar)
-    # Regla: Recursadores Modify
-    $Ar = New-Object System.Security.AccessControl.FileSystemAccessRule("recursadores", "Modify", "ContainerInherit,ObjectInherit", "None", "Allow")
-    $Acl.SetAccessRule($Ar)
-    # Regla: IUSR (Anonimo IIS) ReadAndExecute
-    $Ar = New-Object System.Security.AccessControl.FileSystemAccessRule("IUSR", "ReadAndExecute", "ContainerInherit,ObjectInherit", "None", "Allow")
-    $Acl.SetAccessRule($Ar)
-    Set-Acl "$PhysicalRoot\General" $Acl
-
-    # Carpetas de Grupo
-    foreach ($grp in @("reprobados", "recursadores")) {
-        $path = "$PhysicalRoot\$grp"
-        $Acl = Get-Acl $path
-        # Reset herencia para ser estrictos
-        $Acl.SetAccessRuleProtection($true, $false) 
-        # Admin Full
-        $Ar = New-Object System.Security.AccessControl.FileSystemAccessRule("Administradores", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
-        $Acl.SetAccessRule($Ar)
-        # Grupo Especifico Modify
-        $Ar = New-Object System.Security.AccessControl.FileSystemAccessRule($grp, "Modify", "ContainerInherit,ObjectInherit", "None", "Allow")
-        $Acl.SetAccessRule($Ar)
-        Set-Acl $path $Acl
-    }
-
-    # 4. Crear Sitio FTP con Aislamiento de Usuario (User Isolation)
-    # Usamos "LocalUser" isolation mode. Esto requiere que la raiz sea C:\inetpub\ftproot\LocalUser\Public
-    
-    if (Test-Path "IIS:\Sites\SitioFTP") {
-        Write-Host "El SitioFTP ya existe. Reiniciando configuración..."
-        Remove-WebSite -Name "SitioFTP"
-    }
-
-    # Crear carpeta raiz de aislamiento
-    New-Item -Path "$FtpRoot\LocalUser\Public" -ItemType Directory -Force | Out-Null
-
-    # Crear el sitio
-    New-WebFtpSite -Name "SitioFTP" -Port 21 -PhysicalPath $FtpRoot -Force
-    
-    # Habilitar autenticación anónima y básica
-    Set-ItemProperty "IIS:\Sites\SitioFTP" -Name ftpServer.security.authentication.basicAuthentication.enabled -Value $true
-    Set-ItemProperty "IIS:\Sites\SitioFTP" -Name ftpServer.security.authentication.anonymousAuthentication.enabled -Value $true
-    
-    # Configurar Aislamiento de Usuario (Modo: Directorio de nombre de usuario)
-    Set-ItemProperty "IIS:\Sites\SitioFTP" -Name ftpServer.userIsolation.mode -Value "Directory"
-
-    # Permisos de autorización FTP (IIS)
-    Add-WebConfiguration -Filter /system.ftpServer/security/authorization -Value @{accessType="Allow"; users="*"; permissions="Read,Write"} -PSPath "IIS:\Sites\SitioFTP"
-
-    # Enlace virtual para el usuario Anónimo (Public) hacia General
-    # En IIS User Isolation, "Anonymous" cae en "LocalUser\Public"
-    # Borramos la carpeta física Public creada arriba y hacemos un Link
-    Remove-Item "$FtpRoot\LocalUser\Public" -Force -Recurse
-    New-Item -Path "$FtpRoot\LocalUser\Public" -ItemType Junction -Value "$PhysicalRoot\General" | Out-Null
-
-    Write-Host "Sitio FTP Configurado. Modo Aislamiento de Usuario activo."
-}
-
-function Manage-FtpUsers {
-    $FtpRoot = "C:\inetpub\ftproot"
-    $PhysicalRoot = "C:\FTP_DATA"
-
-    Write-Host "1. Crear Nuevo Usuario"
-    Write-Host "2. Cambiar Grupo de Usuario"
-    $sel = Read-Host "Opcion"
-
-    if ($sel -eq '1') {
-        $n = Read-Host "¿Cuantos usuarios?"
-        1..$n | ForEach-Object {
-            $u = Read-Host "Nombre Usuario"
-            $p = Read-Host "Password" -AsSecureString
-            $gOpt = Read-Host "Grupo (1: reprobados, 2: recursadores)"
-            $grp = if ($gOpt -eq '1') { "reprobados" } else { "recursadores" }
-
-            # Crear Usuario Windows
-            if (-not (Get-LocalUser -Name $u -ErrorAction SilentlyContinue)) {
-                New-LocalUser -Name $u -Password $p -PasswordNeverExpires -Description "FTP User" | Out-Null
+                Write-Host "Configuración completa de FTP finalizada." -ForegroundColor Green
+                Pause
             }
-            Add-LocalGroupMember -Group $grp -Member $u
-
-            # ESTRUCTURA DE DIRECTORIOS (User Isolation Logic)
-            # IIS busca C:\inetpub\ftproot\LocalUser\<Usuario>
-            $UserRoot = "$FtpRoot\LocalUser\$u"
-            New-Item -Path $UserRoot -ItemType Directory -Force | Out-Null
-
-            # 1. Crear Carpeta Personal REAL dentro de su root
-            New-Item -Path "$UserRoot\$u" -ItemType Directory -Force | Out-Null
-            # Permisos NTFS: Solo usuario y admin
-            $Acl = Get-Acl "$UserRoot\$u"
-            $Ar = New-Object System.Security.AccessControl.FileSystemAccessRule($u, "Modify", "ContainerInherit,ObjectInherit", "None", "Allow")
-            $Acl.SetAccessRule($Ar)
-            Set-Acl "$UserRoot\$u" $Acl
-
-            # 2. Crear JUNCTIONS (Enlaces) a las carpetas compartidas
-            # Esto hace que aparezcan como carpetas normales al entrar
-            New-Item -Path "$UserRoot\general" -ItemType Junction -Value "$PhysicalRoot\General" -Force | Out-Null
-            New-Item -Path "$UserRoot\$grp" -ItemType Junction -Value "$PhysicalRoot\$grp" -Force | Out-Null
-
-            Write-Host "Usuario $u creado con estructura: /$u, /general, /$grp"
+            2 { 
+                Crear-Grupos-Locales 
+                Pause
+            }
+            3 { 
+                Crear-Usuario-FTP 
+                Pause
+            }
+            4 { 
+                $nombreUsuario = Read-Host "Ingrese el nombre de usuario a eliminar"
+                Eliminar-Usuario-FTP -nombreUsuario $nombreUsuario
+                Pause
+            }
+            5 { 
+                Configurar-Autenticacion-Permisos 
+                Pause
+            }
+            6 { 
+                Reiniciar-FTP 
+                Pause
+            }
+            7 { 
+                Write-Host "Regresando al menú principal..." 
+                return
+            }
+            default {
+                Write-Host "Opción no válida. Por favor, seleccione una opción entre 1 y 7." -ForegroundColor Red
+                Pause
+            }
         }
-    } elseif ($sel -eq '2') {
-        $u = Read-Host "Usuario a modificar"
-        # Detectar grupo actual (simple check)
-        $isRep = Get-LocalGroupMember -Group "reprobados" | Where-Object Name -like "*$u"
-        
-        if ($isRep) {
-            $old = "reprobados"; $new = "recursadores"
+    } while ($true)
+}
+
+# ==========================================
+# LÓGICA Y FUNCIONALIDADES
+# ==========================================
+
+function Instalar-Caracteristicas {
+    Write-Host "Instalando el servidor web y el servidor FTP con todas sus características..."
+    Install-WindowsFeature Web-Server -IncludeAllSubFeature
+    Install-WindowsFeature Web-FTP-Server -IncludeAllSubFeature
+}
+
+function Crear-Estructura-FTP {
+    Write-Host "Creando estructura de carpetas base para FTP..."
+    New-Item -ItemType Directory -Path C:\FTP -Force | Out-Null
+    New-Item -ItemType Directory -Path C:\FTP\grupos -Force | Out-Null
+    New-Item -ItemType Directory -Path C:\FTP\grupos\reprobados -Force | Out-Null
+    New-Item -ItemType Directory -Path C:\FTP\grupos\recursadores -Force | Out-Null
+    New-Item -ItemType Directory -Path C:\FTP\LocalUser -Force | Out-Null
+    New-Item -ItemType Directory -Path C:\FTP\LocalUser\Public -Force | Out-Null
+    New-Item -ItemType Directory -Path C:\FTP\LocalUser\Public\general -Force | Out-Null
+}
+
+function Crear-Sitio-FTP {
+    Write-Host "Creando el sitio FTP si no existe..."
+    if (-not (Get-WebSite -Name "FTP" -ErrorAction SilentlyContinue)) {
+        New-WebFtpSite -Name "FTP" -Port 21 -PhysicalPath "C:\FTP" -Force
+    } else {
+        Write-Host "El sitio 'FTP' ya existe."
+    }
+}
+
+function Configurar-UserIsolation {
+    Write-Host "Configurando User Isolation..."
+    Set-WebConfigurationProperty -Filter "/system.applicationHost/sites/siteDefaults/ftpServer/userIsolation" `
+        -Name "mode" -Value "IsolateAllDirectories"
+}
+
+function Crear-Grupos-Locales {
+    Write-Host "Creando grupos locales..."
+    $SistemaUsuarios = [ADSI]"WinNT://$env:ComputerName"
+
+    $grupos = @("reprobados", "recursadores")
+    foreach ($grupo in $grupos) {
+        if (-not (Get-LocalGroup -Name $grupo -ErrorAction SilentlyContinue)) {
+            $grupoObj = $SistemaUsuarios.Create("Group", $grupo)
+            $grupoObj.SetInfo()
+            $grupoObj.Description = "Usuarios con acceso a $grupo"
+            $grupoObj.SetInfo()
+            Write-Host "Grupo $grupo creado exitosamente."
         } else {
-            $old = "recursadores"; $new = "reprobados"
+            Write-Host "El grupo $grupo ya existe."
         }
+    }
+}
 
-        $conf = Read-Host "Cambiar de $old a $new? (s/n)"
-        if ($conf -eq 's') {
-            Remove-LocalGroupMember -Group $old -Member $u
-            Add-LocalGroupMember -Group $new -Member $u
-            
-            # Actualizar Junctions
-            $UserRoot = "$FtpRoot\LocalUser\$u"
-            Remove-Item "$UserRoot\$old" -Force -ErrorAction SilentlyContinue
-            New-Item -Path "$UserRoot\$new" -ItemType Junction -Value "$PhysicalRoot\$new" -Force | Out-Null
-            
-            Write-Host "Grupo y carpetas actualizados."
+function Crear-Usuario-FTP {
+    $gruposRequeridos = @("reprobados", "recursadores")
+    $gruposFaltantes = @()
+
+    foreach ($grupo in $gruposRequeridos) {
+        if (-not (Get-LocalGroup -Name $grupo -ErrorAction SilentlyContinue)) {
+            $gruposFaltantes += $grupo
+        }
+    }
+
+    if ($gruposFaltantes.Count -gt 0) {
+        Write-Host "No se pueden crear usuarios porque faltan los siguientes grupos locales: $($gruposFaltantes -join ', ')"
+        Write-Host "Ejecuta la opción 'Crear grupos locales' antes de crear usuarios." -ForegroundColor Red
+        return
+    }
+
+    do {
+        do {
+            $nombreUsuario = Read-Host "Introduce el nombre del usuario (máximo 20 caracteres, o escribe 'salir' para terminar)"
+
+            if ($nombreUsuario -eq "salir") { return }
+
+            if (-not (Validar-NombreUsuario -nombreUsuario $nombreUsuario)) {
+                $nombreUsuario = $null
+                continue
+            }
+
+        } while (-not $nombreUsuario)
+
+        do {
+            $claveUsuario = Read-Host "Introduce la contraseña (8 caracteres, 1 mayúscula, 1 minúscula, 1 dígito y 1 carácter especial)"
+            if (-not (comprobarPassword -clave $claveUsuario)) {
+                Write-Host "La contraseña no cumple con los requisitos, intenta de nuevo."
+            }
+        } while (-not (comprobarPassword -clave $claveUsuario))
+
+        do {
+            Write-Host "Selecciona el grupo para el usuario:"
+            Write-Host "1) Reprobados"
+            Write-Host "2) Recursadores"
+            $grupoSeleccionado = Read-Host "Elige 1 o 2"
+
+            if ($grupoSeleccionado -eq "1") {
+                $grupoFTP = "reprobados"
+                $rutaGrupo = "C:\FTP\grupos\reprobados"
+                break
+            } elseif ($grupoSeleccionado -eq "2") {
+                $grupoFTP = "recursadores"
+                $rutaGrupo = "C:\FTP\grupos\recursadores"
+                break
+            } else {
+                Write-Host "Opción inválida. Selecciona 1 o 2."
+            }
+        } while ($true)
+
+        # Crear el usuario
+        $securePassword = ConvertTo-SecureString -String $claveUsuario -AsPlainText -Force
+        New-LocalUser -Name $nombreUsuario -Password $securePassword -Description "Usuario FTP" -AccountNeverExpires | Out-Null
+
+        # Agregar usuario al grupo correspondiente
+        Add-LocalGroupMember -Group $grupoFTP -Member $nombreUsuario
+
+        # Crear carpetas de usuario
+        $rutaUsuario = "C:\FTP\LocalUser\$nombreUsuario"
+        New-Item -ItemType Directory -Path $rutaUsuario -Force | Out-Null
+        New-Item -ItemType Directory -Path "$rutaUsuario\$nombreUsuario" -Force | Out-Null
+
+        # Crear enlaces simbólicos
+        Crear-Symlink "$rutaUsuario\general" "C:\FTP\LocalUser\Public\general"
+        Crear-Symlink "$rutaUsuario\$grupoFTP" $rutaGrupo
+
+        Write-Host "Usuario $nombreUsuario creado y vinculado correctamente a general y $grupoFTP."
+        
+        $otro = Read-Host "¿Deseas crear otro usuario? (s/n)"
+        if ($otro -ne 's') { break }
+
+    } while ($true)
+}
+
+function Crear-Symlink {
+    param([string]$target, [string]$destination)
+    if (Test-Path $target) { Remove-Item $target -Force }
+    cmd /c mklink /D $target $destination | Out-Null
+}
+
+function Configurar-Autenticacion-Permisos {
+    Write-Host "Configurando autenticación y permisos FTP..."
+
+    Set-ItemProperty -Path "IIS:\Sites\FTP" -Name ftpServer.Security.authentication.basicAuthentication.enabled -Value $true
+    Set-ItemProperty -Path "IIS:\Sites\FTP" -Name ftpServer.Security.authentication.anonymousAuthentication.enabled -Value $true
+    Set-ItemProperty -Path "IIS:\Sites\FTP" -Name ftpServer.Security.authentication.anonymousAuthentication.userName -Value "IUSR"
+    Set-ItemProperty -Path "IIS:\Sites\FTP" -Name ftpServer.Security.authentication.anonymousAuthentication.password -Value ""
+
+    Clear-WebConfiguration "/system.ftpServer/security/authorization" -PSPath "IIS:\"
+
+    Add-WebConfiguration "/system.ftpServer/security/authorization" -PSPath "IIS:\" -Value @{
+        accessType = "Allow";
+        roles = "reprobados, recursadores";
+        permissions = 3
+    } -Location "FTP"
+
+    Add-WebConfiguration "/system.ftpServer/security/authorization" -PSPath "IIS:\" -Value @{
+        accessType = "Allow";
+        users = "IUSR";
+        permissions = 1
+    } -Location "FTP"
+    
+    Write-Host "Autenticación y permisos configurados."
+}
+
+function Configurar-TLS {
+    Set-ItemProperty -Path "IIS:\Sites\FTP" -Name "ftpServer.security.ssl.controlChannelPolicy" -Value 0
+    Set-ItemProperty -Path "IIS:\Sites\FTP" -Name "ftpServer.security.ssl.dataChannelPolicy" -Value 0
+}
+
+function Reiniciar-FTP {
+    Restart-WebItem "IIS:\Sites\FTP"
+    Write-Host "Sitio FTP reiniciado."
+}
+
+function comprobarPassword {
+    param ([string]$clave)
+    $regex = "^(?=.*[A-Z])(?=.*[a-z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,16}$"
+    return ($clave -match $regex)
+}
+
+function Validar-NombreUsuario {
+    param ([string]$nombreUsuario)
+
+    $nombresReservados = @("CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9")
+    $caracteresInvalidos = '[<>:"/\\|?*]'
+
+    if ([string]::IsNullOrWhiteSpace($nombreUsuario)) {
+        Write-Host "El nombre de usuario no puede estar vacío."
+        return $false
+    }
+    if ($nombreUsuario.Length -gt 20) {
+        Write-Host "El nombre de usuario no puede tener más de 20 caracteres."
+        return $false
+    }
+    if ($nombreUsuario -match $caracteresInvalidos) {
+        Write-Host "El nombre de usuario contiene caracteres no permitidos (< > : "" / \ | ? *)."
+        return $false
+    }
+    if ($nombreUsuario -match '^\s|\s$') {
+        Write-Host "El nombre de usuario no puede comenzar ni terminar con un espacio."
+        return $false
+    }
+    if ($nombreUsuario -match '\.$') {
+        Write-Host "El nombre de usuario no puede terminar con un punto."
+        return $false
+    }
+    if ($nombreUsuario -in $nombresReservados) {
+        Write-Host "El nombre de usuario '$nombreUsuario' es un nombre reservado por Windows."
+        return $false
+    }
+    if (Get-LocalUser -Name $nombreUsuario -ErrorAction SilentlyContinue) {
+        Write-Host "El usuario '$nombreUsuario' ya existe."
+        return $false
+    }
+    return $true
+}
+
+function Eliminar-Usuario-FTP {
+    param ([string]$nombreUsuario, [switch]$Force)
+
+    Write-Host "ADVERTENCIA: Asegúrate de que el usuario '$nombreUsuario' no esté conectado por FTP." -ForegroundColor Yellow
+
+    if ([string]::IsNullOrWhiteSpace($nombreUsuario)) {
+        Write-Host "ERROR: Debes proporcionar un nombre de usuario válido." -ForegroundColor Red
+        return
+    }
+
+    $usuario = Get-LocalUser -Name $nombreUsuario -ErrorAction SilentlyContinue
+    if (-not $usuario) {
+        Write-Host "ERROR: El usuario '$nombreUsuario' no existe." -ForegroundColor Red
+        return
+    }
+
+    if (-not $Force) {
+        $confirmacion = Read-Host "¿Estás seguro que deseas eliminar al usuario '$nombreUsuario' y su directorio? (S/N)"
+        if ($confirmacion -ne 'S') {
+            Write-Host "Operación cancelada." -ForegroundColor Yellow
+            return
+        }
+    }
+
+    try {
+        Remove-LocalUser -Name $nombreUsuario -ErrorAction Stop
+        Write-Host "Usuario '$nombreUsuario' eliminado del sistema." -ForegroundColor Green
+    }
+    catch {
+        Write-Host "ERROR: No se pudo eliminar el usuario '$nombreUsuario'. Detalle: $($_.Exception.Message)" -ForegroundColor Red
+        return
+    }
+
+    $rutaUsuario = "C:\FTP\LocalUser\$nombreUsuario"
+
+    if (Test-Path $rutaUsuario) {
+        try {
+            $items = Get-ChildItem -Path $rutaUsuario -Force -ErrorAction Stop
+            foreach ($item in $items) {
+                if ($item.LinkType -eq 'SymbolicLink') {
+                    Remove-Item -Path $item.FullName -Force -ErrorAction Stop
+                }
+            }
+            Remove-Item -Path $rutaUsuario -Recurse -Force -ErrorAction Stop
+            Write-Host "Directorio '$rutaUsuario' eliminado correctamente." -ForegroundColor Green
+        }
+        catch {
+            Write-Host "ERROR al eliminar el directorio '$rutaUsuario': $($_.Exception.Message)" -ForegroundColor Red
         }
     }
 }
