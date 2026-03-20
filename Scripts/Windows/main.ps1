@@ -38,7 +38,8 @@ while ($true) {
         '3' { Show-DnsMenu }
         '4' { Show-SshMenu }
         '5' { Show-FtpMenu }
-        '6' { 
+        '6' { Show-HttpMenu }
+        '7' { 
             Write-Host "Saliendo del sistema..." 
             Exit 
         }

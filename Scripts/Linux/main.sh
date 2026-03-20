@@ -32,7 +32,8 @@ while true; do
     echo "3. Instalar y Configurar DNS"
     echo "4. Configurar SSH"
     echo "5. Instalar y configurar FTP"
-    echo "6. Salir"
+    echo "6. Instalar y configurar HTTP"
+    echo "7. Salir"
     read -p "Opción: " opcion
 
     case $opcion in
@@ -51,7 +52,10 @@ while true; do
         5)
             Menu_FTP
             ;;
-        6) 
+        6)  
+            Menu_HTTP
+            ;; 
+        7)
             exit
             ;;
 
